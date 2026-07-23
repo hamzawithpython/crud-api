@@ -68,3 +68,21 @@ content-type: application/json
 - Python 3.12
 - FastAPI
 - Uvicorn
+
+## AI vs Me (Stage 7 — AI Rematch)
+
+As a bonus stage, I wrote an original prompt from memory (no copying from the assignment brief) and had an AI generate the same CRUD API independently in [`ai-version/`](ai-version/). Both versions were tested against the same checkpoints and diffed.
+
+**Concrete differences found:**
+
+1. **No pre-seeded data** — my version pre-seeds 3 tasks on startup (required by the brief); the AI version starts with an empty list, since my prompt never mentioned seed data.
+2. **Different field name** — I used `done`; the AI used `completed`. Neither is "wrong," but it shows how an unspecified schema leads to arbitrary naming choices.
+3. **Missing input validation** — my version rejects empty/whitespace-only titles with `400`; the AI version has no such check at all, since my prompt didn't explicitly call out validation rules.
+4. **Generic vs specific error messages** — my 404s say `"Task 4 not found"` (includes the id); the AI's say only `"Task not found"`, since I never specified the exact error message format.
+5. **Default status codes** — my `POST /tasks` returns `201 Created` and `DELETE /tasks/{id}` returns `204 No Content` with no body; the AI version left both as FastAPI's default `200 OK`, including a JSON body on delete.
+6. **Custom error shape** — my version enforces `{"error": "..."}` across the app via two global exception handlers; the AI version uses FastAPI's raw default (`{"detail": "..."}`).
+7. **PUT semantics** — mine requires a full `title` on every update (reuses the create model); the AI made all update fields optional, allowing partial updates — a legitimate but different design decision.
+
+**Takeaway:** Nearly every difference traces back to details my prompt left unstated — exact status codes, error shapes, seed data, and validation rules. The AI's code wasn't *wrong*, it was a reasonable interpretation of an underspecified spec. This was the clearest lesson from this stage: precision in a prompt directly determines how closely the output matches what you actually need.
+
+**Rematch:** I rewrote the prompt to explicitly specify the field name, seed data, validation rules, exact error messages, status codes, error shape, and PUT semantics — the resulting rematch output matched my hand-built version almost exactly, confirming that most of the original gap was a prompt precision problem, not a model capability problem.
