@@ -9,7 +9,11 @@ class TaskCreate(BaseModel):
     done: bool = False
 
 
-app = FastAPI()
+app = FastAPI(
+    title="CRUD API",
+    description="A simple in-memory task management API built for the FlyRank AI Backend Engineering Internship.",
+    version="0.1.0",
+)
 
 
 @app.exception_handler(HTTPException)
@@ -31,7 +35,7 @@ tasks = [
 ]
 
 
-@app.get("/")
+@app.get("/", summary="API info", description="Returns basic information about this API.")
 def root():
     return {
         "name": "CRUD API",
@@ -40,17 +44,17 @@ def root():
     }
 
 
-@app.get("/health")
+@app.get("/health", summary="Health check", description="Returns a simple status indicating the server is running.")
 def health():
     return {"status": "ok"}
 
 
-@app.get("/tasks")
+@app.get("/tasks", summary="List all tasks", description="Returns the full list of tasks currently in memory.")
 def get_tasks():
     return tasks
 
 
-@app.get("/tasks/{task_id}")
+@app.get("/tasks/{task_id}", summary="Get a single task", description="Returns one task by its id, or 404 if it doesn't exist.")
 def get_task(task_id: int):
     for task in tasks:
         if task["id"] == task_id:
@@ -58,7 +62,12 @@ def get_task(task_id: int):
     raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
 
 
-@app.post("/tasks", status_code=201)
+@app.post(
+    "/tasks",
+    status_code=201,
+    summary="Create a task",
+    description="Creates a new task with an auto-assigned id. Title is required and cannot be empty.",
+)
 def create_task(task: TaskCreate):
     if not task.title or not task.title.strip():
         raise HTTPException(status_code=400, detail="Title is required")
@@ -69,7 +78,11 @@ def create_task(task: TaskCreate):
     return new_task
 
 
-@app.put("/tasks/{task_id}")
+@app.put(
+    "/tasks/{task_id}",
+    summary="Update a task",
+    description="Replaces an existing task's title and done status. Returns 404 if the task doesn't exist.",
+)
 def update_task(task_id: int, task: TaskCreate):
     if not task.title or not task.title.strip():
         raise HTTPException(status_code=400, detail="Title is required")
@@ -83,7 +96,12 @@ def update_task(task_id: int, task: TaskCreate):
     raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
 
 
-@app.delete("/tasks/{task_id}", status_code=204)
+@app.delete(
+    "/tasks/{task_id}",
+    status_code=204,
+    summary="Delete a task",
+    description="Deletes a task by its id. Returns 404 if the task doesn't exist.",
+)
 def delete_task(task_id: int):
     for existing in tasks:
         if existing["id"] == task_id:
