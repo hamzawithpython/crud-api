@@ -79,10 +79,16 @@ def create_task(task: TaskCreate):
     if not task.title or not task.title.strip():
         raise HTTPException(status_code=400, detail="Title is required")
 
-    new_id = max((t["id"] for t in tasks), default=0) + 1
-    new_task = {"id": new_id, "title": task.title, "done": task.done}
-    tasks.append(new_task)
-    return new_task
+    conn = get_connection()
+    cursor = conn.execute(
+        "INSERT INTO tasks (title, done) VALUES (?, ?)",
+        (task.title, int(task.done)),
+    )
+    conn.commit()
+    new_id = cursor.lastrowid
+    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (new_id,)).fetchone()
+    conn.close()
+    return row_to_task(row)
 
 
 @app.put(
