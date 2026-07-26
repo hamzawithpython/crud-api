@@ -3,7 +3,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
-from database import init_db
+from database import init_db, get_connection, row_to_task
 
 
 class TaskCreate(BaseModel):
@@ -36,12 +36,6 @@ def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(status_code=400, content={"error": f"{field} is required"})
 
 
-tasks = [
-    {"id": 1, "title": "Buy groceries", "done": False},
-    {"id": 2, "title": "Write project report", "done": False},
-    {"id": 3, "title": "Walk the dog", "done": True},
-]
-
 
 @app.get("/", summary="API info", description="Returns basic information about this API.")
 def root():
@@ -59,15 +53,20 @@ def health():
 
 @app.get("/tasks", summary="List all tasks", description="Returns the full list of tasks currently in memory.")
 def get_tasks():
-    return tasks
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM tasks").fetchall()
+    conn.close()
+    return [row_to_task(row) for row in rows]
 
 
 @app.get("/tasks/{task_id}", summary="Get a single task", description="Returns one task by its id, or 404 if it doesn't exist.")
 def get_task(task_id: int):
-    for task in tasks:
-        if task["id"] == task_id:
-            return task
-    raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    return row_to_task(row)
 
 
 @app.post(
