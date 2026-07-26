@@ -56,19 +56,29 @@ def health():
 @app.get("/tasks", summary="List all tasks", description="Returns the full list of tasks currently in memory.")
 def get_tasks():
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM tasks").fetchall()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM tasks")
+    rows = cur.fetchall()
+    result = [row_to_task(row, cur) for row in rows]  # before close
+    cur.close()
     conn.close()
-    return [row_to_task(row) for row in rows]
+    return result
 
 
 @app.get("/tasks/{task_id}", summary="Get a single task", description="Returns one task by its id, or 404 if it doesn't exist.")
 def get_task(task_id: int):
     conn = get_connection()
-    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
-    conn.close()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
+    row = cur.fetchone()
     if row is None:
+        cur.close()
+        conn.close()
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
-    return row_to_task(row)
+    result = row_to_task(row, cur)  # read description before closing
+    cur.close()
+    conn.close()
+    return result
 
 
 @app.post(
