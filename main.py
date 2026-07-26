@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from contextlib import asynccontextmanager
+from database import init_db
 
 
 class TaskCreate(BaseModel):
@@ -9,10 +11,16 @@ class TaskCreate(BaseModel):
     done: bool = False
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()   # runs once when the server starts
+    yield       # server is now running and handling requests
+
 app = FastAPI(
     title="CRUD API",
-    description="A simple in-memory task management API built for the FlyRank AI Backend Engineering Internship.",
-    version="0.1.0",
+    description="A simple task management API built for the FlyRank AI Backend Engineering Internship.",
+    version="0.2.0",
+    lifespan=lifespan,
 )
 
 
