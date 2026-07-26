@@ -81,64 +81,53 @@ def get_task(task_id: int):
     return result
 
 
-@app.post(
-    "/tasks",
-    status_code=201,
-    summary="Create a task",
-    description="Creates a new task with an auto-assigned id. Title is required and cannot be empty.",
-)
+@app.post("/tasks", status_code=201, summary="Create a task", description="Creates a new task with an auto-assigned id. Title is required and cannot be empty.")
 def create_task(task: TaskCreate):
     if not task.title or not task.title.strip():
         raise HTTPException(status_code=400, detail="Title is required")
 
     conn = get_connection()
-    cursor = conn.execute(
-        "INSERT INTO tasks (title, done) VALUES (?, ?)",
-        (task.title, int(task.done)),
+    cur = conn.execute(
+        "INSERT INTO tasks (title, done) VALUES (%s, %s) RETURNING *",
+        (task.title, task.done),
     )
-    conn.commit()
-    new_id = cursor.lastrowid
-    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (new_id,)).fetchone()
+    row = cur.fetchone()
+    result = row_to_task(row, cur)
+    cur.close()
     conn.close()
-    return row_to_task(row)
+    return result
 
 
-@app.put(
-    "/tasks/{task_id}",
-    summary="Update a task",
-    description="Replaces an existing task's title and done status. Returns 404 if the task doesn't exist.",
-)
+@app.put("/tasks/{task_id}", summary="Update a task", description="Replaces an existing task's title and done status. Returns 404 if the task doesn't exist.")
 def update_task(task_id: int, task: TaskCreate):
     if not task.title or not task.title.strip():
         raise HTTPException(status_code=400, detail="Title is required")
 
     conn = get_connection()
-    cursor = conn.execute(
-        "UPDATE tasks SET title = ?, done = ? WHERE id = ?",
-        (task.title, int(task.done), task_id),
+    cur = conn.execute(
+        "UPDATE tasks SET title = %s, done = %s WHERE id = %s RETURNING *",
+        (task.title, task.done, task_id),
     )
-    conn.commit()
-
-    if cursor.rowcount == 0:
+    row = cur.fetchone()
+    if row is None:
+        cur.close()
         conn.close()
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
-
-    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    result = row_to_task(row, cur)
+    cur.close()
     conn.close()
-    return row_to_task(row)
+    return result
 
 
-@app.delete(
-    "/tasks/{task_id}",
-    status_code=204,
-    summary="Delete a task",
-    description="Deletes a task by its id. Returns 404 if the task doesn't exist.",
-)
+@app.delete("/tasks/{task_id}", status_code=204, summary="Delete a task", description="Deletes a task by its id. Returns 404 if the task doesn't exist.")
 def delete_task(task_id: int):
     conn = get_connection()
-    cursor = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-    conn.commit()
+    cur = conn.execute(
+        "DELETE FROM tasks WHERE id = %s RETURNING id",
+        (task_id,),
+    )
+    row = cur.fetchone()
+    cur.close()
     conn.close()
-
-    if cursor.rowcount == 0:
+    if row is None:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
