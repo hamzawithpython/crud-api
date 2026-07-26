@@ -1,10 +1,10 @@
 # CRUD API
 
-A simple in-memory task management API built with FastAPI, as part of the FlyRank AI Backend Engineering Internship.
+A task management API built with FastAPI and SQLite, as part of the FlyRank AI Backend Engineering Internship.
 
 Supports full CRUD (Create, Read, Update, Delete) on tasks, with input validation, correct HTTP status codes, consistent JSON error responses, and interactive Swagger documentation.
 
-**Note:** Data is stored in memory only and resets whenever the server restarts. Persistent storage (SQLite) is introduced in a later assignment.
+Data is persisted to a local SQLite database (`tasks.db`) and survives server restarts.
 
 ---
 
@@ -19,22 +19,24 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-The API will be available at `http://127.0.0.1:8000`.
+The API will be available at `http://127.0.0.1:8000`.  
 Interactive Swagger docs are available at `http://127.0.0.1:8000/docs`.
+
+On first run, `tasks.db` is created automatically and seeded with 3 example tasks. The database file is git-ignored — every fresh clone starts with a clean database.
 
 ---
 
 ## Endpoints
 
-| Method | Path            | Description                          | Success | Error cases           |
-|--------|-----------------|---------------------------------------|---------|------------------------|
-| GET    | `/`             | API info                              | 200     | —                       |
-| GET    | `/health`       | Health check                          | 200     | —                       |
-| GET    | `/tasks`        | List all tasks                        | 200     | —                       |
-| GET    | `/tasks/{id}`   | Get a single task                     | 200     | 404 if not found        |
-| POST   | `/tasks`        | Create a task                         | 201     | 400 if title missing/empty |
-| PUT    | `/tasks/{id}`   | Update a task                         | 200     | 400 invalid body, 404 not found |
-| DELETE | `/tasks/{id}`   | Delete a task                         | 204     | 404 if not found        |
+| Method | Path | Description | Success | Error cases |
+|--------|------|-------------|---------|-------------|
+| GET | `/` | API info | 200 | — |
+| GET | `/health` | Health check | 200 | — |
+| GET | `/tasks` | List all tasks | 200 | — |
+| GET | `/tasks/{id}` | Get a single task | 200 | 404 if not found |
+| POST | `/tasks` | Create a task | 201 | 400 if title missing/empty |
+| PUT | `/tasks/{id}` | Update a task | 200 | 400 invalid body, 404 not found |
+| DELETE | `/tasks/{id}` | Delete a task | 204 | 404 if not found |
 
 All error responses use the shape:
 ```json
@@ -43,23 +45,51 @@ All error responses use the shape:
 
 ---
 
-## Example request
+## Database
 
-```powershell
-curl.exe -i http://127.0.0.1:8000/tasks
+**Why SQLite?**  
+SQLite is a zero-install, single-file database built into Python's standard library. It's the right choice for a project at this scale — no server to run, no credentials to manage, and the entire database is one file you can inspect directly. When a project grows to need concurrent writes or multiple services sharing data, that's when you'd migrate to Postgres.
+
+**Database file:** `tasks.db` — auto-created in the project root on first run. Listed in `.gitignore` so each clone starts fresh.
+
+**Schema:**
+```sql
+CREATE TABLE tasks (
+    id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT    NOT NULL,
+    done  INTEGER NOT NULL DEFAULT 0
+);
 ```
-HTTP/1.1 200 OK
-content-type: application/json
-[
-{"id": 1, "title": "Buy groceries", "done": false},
-{"id": 2, "title": "Write project report", "done": false},
-{"id": 3, "title": "Walk the dog", "done": true}
-]
+
+**Example queries (run directly against the DB):**
+```powershell
+# All tasks
+python -c "import sqlite3; conn = sqlite3.connect('tasks.db'); [print(tuple(r)) for r in conn.execute('SELECT * FROM tasks')]"
+
+# Completed tasks only
+python -c "import sqlite3; conn = sqlite3.connect('tasks.db'); [print(tuple(r)) for r in conn.execute('SELECT * FROM tasks WHERE done = 1')]"
+```
+
 ---
 
-## Swagger UI
+## Example requests
 
-![Swagger UI](swagger-ui.png)
+```powershell
+# List all tasks
+curl.exe http://127.0.0.1:8000/tasks
+
+# Get one task
+curl.exe http://127.0.0.1:8000/tasks/1
+
+# Create a task
+curl.exe -X POST http://127.0.0.1:8000/tasks -H "Content-Type: application/json" -d '{\"title\": \"Read a book\", \"done\": false}'
+
+# Update a task
+curl.exe -X PUT http://127.0.0.1:8000/tasks/1 -H "Content-Type: application/json" -d '{\"title\": \"Buy groceries and cook\", \"done\": true}'
+
+# Delete a task
+curl.exe -X DELETE http://127.0.0.1:8000/tasks/4
+```
 
 ---
 
@@ -68,21 +98,10 @@ content-type: application/json
 - Python 3.12
 - FastAPI
 - Uvicorn
+- SQLite (via Python stdlib `sqlite3`)
 
-## AI vs Me (Stage 7 — AI Rematch)
+---
 
-As a bonus stage, I wrote an original prompt from memory (no copying from the assignment brief) and had an AI generate the same CRUD API independently in [`ai-version/`](ai-version/). Both versions were tested against the same checkpoints and diffed.
+## AI vs Me (Stage 6 — AI Rematch)
 
-**Concrete differences found:**
-
-1. **No pre-seeded data** — my version pre-seeds 3 tasks on startup (required by the brief); the AI version starts with an empty list, since my prompt never mentioned seed data.
-2. **Different field name** — I used `done`; the AI used `completed`. Neither is "wrong," but it shows how an unspecified schema leads to arbitrary naming choices.
-3. **Missing input validation** — my version rejects empty/whitespace-only titles with `400`; the AI version has no such check at all, since my prompt didn't explicitly call out validation rules.
-4. **Generic vs specific error messages** — my 404s say `"Task 4 not found"` (includes the id); the AI's say only `"Task not found"`, since I never specified the exact error message format.
-5. **Default status codes** — my `POST /tasks` returns `201 Created` and `DELETE /tasks/{id}` returns `204 No Content` with no body; the AI version left both as FastAPI's default `200 OK`, including a JSON body on delete.
-6. **Custom error shape** — my version enforces `{"error": "..."}` across the app via two global exception handlers; the AI version uses FastAPI's raw default (`{"detail": "..."}`).
-7. **PUT semantics** — mine requires a full `title` on every update (reuses the create model); the AI made all update fields optional, allowing partial updates — a legitimate but different design decision.
-
-**Takeaway:** Nearly every difference traces back to details my prompt left unstated — exact status codes, error shapes, seed data, and validation rules. The AI's code wasn't *wrong*, it was a reasonable interpretation of an underspecified spec. This was the clearest lesson from this stage: precision in a prompt directly determines how closely the output matches what you actually need.
-
-**Rematch:** I rewrote the prompt to explicitly specify the field name, seed data, validation rules, exact error messages, status codes, error shape, and PUT semantics — the resulting rematch output matched my hand-built version almost exactly, confirming that most of the original gap was a prompt precision problem, not a model capability problem.
+*(Carried over from A1)* An AI-generated version of this API is in [`ai-version/`](ai-version/). See the A1 rematch notes for the full diff and takeaways.
