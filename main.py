@@ -4,6 +4,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from database import init_db, get_connection, row_to_task
+from dotenv import load_dotenv
+load_dotenv()
 
 
 class TaskCreate(BaseModel):
