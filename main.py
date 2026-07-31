@@ -49,6 +49,66 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+bearer_scheme = HTTPBearer()
+
+class AuthRequest(BaseModel):
+    email: str
+    password: str
+
+@app.post("/auth/signup", status_code=201)
+def signup(payload: AuthRequest):
+    if not payload.email or not payload.password:
+        raise HTTPException(status_code=400, detail={"error": "email and password are required"})
+    try:
+        result = supabase.auth.sign_up({
+            "email": payload.email,
+            "password": payload.password
+        })
+        return {"user": result.user}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail={"error": str(e)})
+
+
+@app.post("/auth/login")
+def login(payload: AuthRequest):
+    if not payload.email or not payload.password:
+        raise HTTPException(status_code=400, detail={"error": "email and password are required"})
+    try:
+        result = supabase.auth.sign_in_with_password({
+            "email": payload.email,
+            "password": payload.password
+        })
+        return {"access_token": result.session.access_token, "user": result.user}
+    except Exception as e:
+        raise HTTPException(status_code=401, detail={"error": "invalid credentials"})
+
+@app.get("/public/info")
+def public_info():
+    return {"message": "This is a public endpoint. No auth required."}
+
+
+@app.get("/protected/profile")
+def protected_profile(user=Depends(get_current_user), _=Depends(bearer_scheme)):
+    return {
+        "id": user.id,
+        "email": user.email,
+        "role": user.role,
+    }
+
+@app.post("/auth/logout", status_code=204)
+def logout(user=Depends(get_current_user), _=Depends(bearer_scheme)):
+    try:
+        supabase.auth.sign_out()
+    except Exception:
+        pass
+    return None
+
+@app.get("/protected/dashboard")
+def protected_dashboard(user=Depends(get_current_user), _=Depends(bearer_scheme)):
+    return {
+        "message": f"Welcome to your dashboard, {user.email}",
+        "role": user.role,
+    }
 
 
 @app.exception_handler(HTTPException)
