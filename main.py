@@ -1,11 +1,36 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from database import init_db, get_connection, row_to_task
 from dotenv import load_dotenv
+import os
+from supabase import create_client, Client
+
 load_dotenv()
+
+supabase_url: str = os.environ.get("SUPABASE_URL")
+supabase_key: str = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(supabase_url, supabase_key)
+
+def get_current_user(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail={"error": "missing or malformed token"})
+
+    token = auth_header.split(" ")[1]
+
+    try:
+        result = supabase.auth.get_user(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail={"error": "invalid or expired token"})
+
+    if not result or not result.user:
+        raise HTTPException(status_code=401, detail={"error": "invalid or expired token"})
+
+    return result.user
 
 
 class TaskCreate(BaseModel):
