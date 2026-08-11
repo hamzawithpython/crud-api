@@ -1,9 +1,24 @@
-﻿import json
+import json
 from fastapi import APIRouter, HTTPException
 from src.llm.schema import BookRecord, EnrichmentResult
-from src.llm.client import get_stub_response, is_stub_mode, call_llm
+from src.llm.client import (
+    get_stub_response,
+    is_stub_mode,
+    call_llm,
+    call_llm_repair,
+    strip_fences,
+    write_quarantine,
+)
 
 router = APIRouter()
+
+
+def parse_and_validate(raw_output: str) -> EnrichmentResult:
+    """Strip, parse, validate. Raises on any failure - caller decides
+    what happens next (repair vs. quarantine)."""
+    cleaned = strip_fences(raw_output)
+    data = json.loads(cleaned)          # may raise json.JSONDecodeError
+    return EnrichmentResult(**data)      # may raise pydantic ValidationError
 
 
 @router.post("/enrich", response_model=EnrichmentResult)
@@ -14,14 +29,14 @@ def enrich_book(book: BookRecord):
     raw_output = call_llm(book)
 
     try:
-        data = json.loads(raw_output)
-        return EnrichmentResult(**data)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "raw parse failed — expected before Stage 3 is built",
-                "exception": str(e),
-                "raw_model_output": raw_output,
-            },
-        )
+        return parse_and_validate(raw_output)
+    except Exception as first_error:
+        repaired_output = call_llm_repair(book, raw_output, str(first_error))
+        try:
+            return parse_and_validate(repaired_output)
+        except Exception as second_error:
+            write_quarantine(book, repaired_output, str(second_error))
+            raise HTTPException(
+                status_code=422,
+                detail="Model could not produce valid output after one repair attempt.",
+            )
