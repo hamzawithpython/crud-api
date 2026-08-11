@@ -8,6 +8,8 @@ from database import init_db, get_connection, row_to_task
 from dotenv import load_dotenv
 import os
 from supabase import create_client, Client
+from src.routes.enrich import router as enrich_router
+
 
 load_dotenv()
 
@@ -50,6 +52,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 bearer_scheme = HTTPBearer()
+app.include_router(enrich_router)
 
 class AuthRequest(BaseModel):
     email: str
