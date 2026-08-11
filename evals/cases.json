@@ -1,0 +1,90 @@
+[
+  {
+    "id": 1,
+    "case_type": "obvious_fiction",
+    "input": {
+      "title": "The Hobbit",
+      "description": "A reluctant hobbit is swept into an epic quest to reclaim a mountain kingdom from a dragon.",
+      "rating_text": "Five",
+      "price_gbp": 9.99
+    },
+    "expected_category": "fiction"
+  },
+  {
+    "id": 2,
+    "case_type": "obvious_non_fiction",
+    "input": {
+      "title": "Sapiens: A Brief History of Humankind",
+      "description": "An exploration of how Homo sapiens came to dominate the world, tracing the cognitive, agricultural, and scientific revolutions.",
+      "rating_text": "Five",
+      "price_gbp": 12.50
+    },
+    "expected_category": "non-fiction"
+  },
+  {
+    "id": 3,
+    "case_type": "ambiguous",
+    "input": {
+      "title": "The Girl with the Dragon Tattoo",
+      "description": "A journalist and a hacker investigate a decades-old disappearance, uncovering a trail of corruption and violence.",
+      "rating_text": "Four",
+      "price_gbp": 8.99
+    },
+    "expected_category": "mystery"
+  },
+  {
+    "id": 4,
+    "case_type": "ambiguous",
+    "input": {
+      "title": "Atomic Habits",
+      "description": "A guide to building good habits and breaking bad ones through small, incremental changes.",
+      "rating_text": "Five",
+      "price_gbp": 11.99
+    },
+    "expected_category": "self-help"
+  },
+  {
+    "id": 5,
+    "case_type": "missing_description",
+    "input": {
+      "title": "Untitled Notes",
+      "description": null,
+      "rating_text": "Two",
+      "price_gbp": 4.50
+    },
+    "expected_category": "other"
+  },
+  {
+    "id": 6,
+    "case_type": "description_too_short",
+    "input": {
+      "title": "Whispers",
+      "description": "A short story.",
+      "rating_text": "Three",
+      "price_gbp": 3.99
+    },
+    "expected_category": "other"
+  },
+  {
+    "id": 7,
+    "case_type": "genuinely_unclear",
+    "input": {
+      "title": "Xyzzy Plugh",
+      "description": "It happens. Then other things happen. Eventually it ends.",
+      "rating_text": "One",
+      "price_gbp": 1.50
+    },
+    "expected_category": "other"
+  },
+  {
+    "id": 8,
+    "case_type": "category_boundary",
+    "input": {
+      "title": "The Mystery of the Missing Puppy",
+      "description": "A young detective and her talking dog solve the case of a stolen puppy in their neighborhood.",
+      "rating_text": "Four",
+      "price_gbp": 6.99
+    },
+    "expected_category": "children"
+  }
+]
