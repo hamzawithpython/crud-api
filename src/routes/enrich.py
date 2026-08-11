@@ -7,6 +7,7 @@ from src.llm.client import (
     call_llm,
     call_llm_repair,
     strip_fences,
+    truncate_summary,
     write_quarantine,
     log_call,
 )
@@ -19,6 +20,8 @@ def parse_and_validate(raw_output: str) -> EnrichmentResult:
     what happens next (repair vs. quarantine)."""
     cleaned = strip_fences(raw_output)
     data = json.loads(cleaned)
+    if isinstance(data.get("summary"), str):
+        data["summary"] = truncate_summary(data["summary"])
     return EnrichmentResult(**data)
 
 

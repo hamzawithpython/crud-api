@@ -29,7 +29,7 @@ def is_stub_mode() -> bool:
 
 # ---------- Prompt loading ----------
 
-PROMPT_PATH = Path(__file__).resolve().parent.parent.parent / "prompts" / "enrich-v1.md"
+PROMPT_PATH = Path(__file__).resolve().parent.parent.parent / "prompts" / "enrich-v2.md"
 
 
 def build_prompt(book: BookRecord) -> tuple[str, str]:
@@ -37,10 +37,8 @@ def build_prompt(book: BookRecord) -> tuple[str, str]:
     trusted instructions and per-request data."""
     template = PROMPT_PATH.read_text(encoding="utf-8")
 
-    # Everything above the final heading is fixed instruction text.
     system_part, _, _ = template.partition("# Book record to classify")
 
-    # The actual record - this is the "data," kept out of the system prompt.
     user_message = (
         f"title: {book.title}\n"
         f"description: {book.description}\n"
@@ -54,20 +52,17 @@ def build_prompt(book: BookRecord) -> tuple[str, str]:
 # ---------- Config / constants ----------
 
 TIMEOUT_SECONDS = 30
-MAX_RETRIES = 2  # total attempts = 1 initial + up to 2 retries = 3
+MAX_RETRIES = 2
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 QUARANTINE_PATH = Path(__file__).resolve().parent.parent.parent / "logs" / "quarantine.jsonl"
 CALL_LOG_PATH = Path(__file__).resolve().parent.parent.parent / "logs" / "calls.jsonl"
-PROMPT_VERSION = "enrich-v1"  # bump this string when the prompt file changes
+PROMPT_VERSION = "enrich-v2"  # bumped from v1 after real-data testing surfaced JSON-syntax bugs
 
 
 # ---------- Kill switch / client setup ----------
 
 def is_llm_enabled() -> bool:
-    """Kill switch. False means: don't touch the model at all, fail fast
-    with a clear signal. Someone non-technical can flip this in .env
-    without needing a deploy or a code change."""
     return os.getenv("LLM_ENABLED", "true").lower() == "true"
 
 
@@ -82,11 +77,6 @@ def _get_client() -> OpenAI:
 # ---------- Retry wrapper ----------
 
 def _call_with_retry(client: OpenAI, **kwargs) -> tuple[str, dict]:
-    """Wraps a single chat completion call with retry-on-transient-error.
-    Returns (content, usage_dict) so callers can log token counts.
-
-    Retries only on 5xx/429 (transient) - never on 4xx auth/bad-request
-    errors, since those won't fix themselves by waiting."""
     last_exception = None
 
     for attempt in range(MAX_RETRIES + 1):
@@ -111,9 +101,6 @@ def _call_with_retry(client: OpenAI, **kwargs) -> tuple[str, dict]:
             if not is_retryable or is_last_attempt:
                 raise
 
-            # Exponential backoff with jitter: wait longer each retry,
-            # plus a small random offset so simultaneous failed requests
-            # don't all retry at the exact same instant.
             backoff = (2 ** attempt) + random.uniform(0, 0.5)
             time.sleep(backoff)
 
@@ -123,8 +110,6 @@ def _call_with_retry(client: OpenAI, **kwargs) -> tuple[str, dict]:
 # ---------- Model calls ----------
 
 def call_llm(book: BookRecord) -> tuple[str, dict]:
-    """Calls the real model, with timeout + retry + usage tracking.
-    Returns (raw_text, usage) - usage feeds the cost log."""
     if not is_llm_enabled():
         raise RuntimeError("LLM_ENABLED is false - kill switch is active")
 
@@ -143,20 +128,60 @@ def call_llm(book: BookRecord) -> tuple[str, dict]:
 
 
 def strip_fences(text: str) -> str:
-    """Models often wrap JSON in ```json ... ``` fences by default.
-    Strip defensively rather than assuming they won't appear -
-    Stage 2 already showed us the model CAN return clean JSON, but
-    that's not a guarantee across every input."""
+    """Cleans up common ways gemma3:1b's raw output deviates from valid JSON,
+    observed across real testing (not hypothetical):
+
+    1. Markdown code fences wrapping the JSON (```json ... ```)
+    2. Python-style capitalized True/False/None instead of JSON's lowercase
+       true/false/null (seen on real scraped data, e.g. "title_unclear": True)
+    3. Unnecessary backslash-escapes before characters JSON doesn't require
+       escaping - apostrophes and underscores (seen on real scraped data,
+       e.g. "there\\'s mischief", "quality\\_flags")
+
+    This is a code-level fix rather than relying solely on prompt wording,
+    because format instructions repeatedly lose to strong model priors on
+    a small local model - the same lesson already documented from the
+    v1 Prompt Ladder work and from LedgerLens's confidence calibration.
+
+    Known limitation: the True/False/None word-boundary substitution could
+    theoretically alter those words if they appear naturally inside a
+    generated summary sentence (e.g. "her True calling"). Accepted tradeoff
+    given how rarely capitalized True/False/None appears in normal prose
+    versus how often it appears as a raw Python-style JSON value on this
+    model.
+    """
     text = text.strip()
     text = re.sub(r"^```(?:json)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
+
+    # Invalid escapes JSON doesn't require - strip the stray backslash.
+    text = text.replace("\\_", "_")
+    text = text.replace("\\'", "'")
+
+    # Python-style booleans/None -> JSON equivalents, word-boundary safe.
+    text = re.sub(r'(?<!["\w])True(?!["\w])', "true", text)
+    text = re.sub(r'(?<!["\w])False(?!["\w])', "false", text)
+    text = re.sub(r'(?<!["\w])None(?!["\w])', "null", text)
+
     return text.strip()
 
+def truncate_summary(text: str, max_len: int = 200) -> str:
+    """The schema caps summary length (~20 words, generous char ceiling),
+    but gemma3:1b sometimes ignores the "one sentence, max 20 words"
+    prompt rule and echoes multi-sentence chunks of the source
+    description instead - especially on info-dense non-fiction and
+    longer fairytale-style descriptions. Rather than reject an otherwise
+    correct classification over this formatting overshoot (wasting a
+    repair round-trip, or worse landing a good answer in quarantine),
+    truncate to a clean word boundary. Same principle as strip_fences:
+    fix the output, don't just crash on it.
+    """
+    if text is None or len(text) <= max_len:
+        return text
+    truncated = text[: max_len - 1].rsplit(" ", 1)[0]
+    return truncated.rstrip(".,;: ") + "…"
 
 def call_llm_repair(book: BookRecord, broken_output: str, error: str) -> tuple[str, dict]:
-    """One repair attempt: replay the conversation with the model's own
-    broken answer plus the exact validation error, and ask it to fix it.
-    Same timeout/retry/usage-tracking treatment as the first call."""
     if not is_llm_enabled():
         raise RuntimeError("LLM_ENABLED is false - kill switch is active")
 
@@ -186,9 +211,6 @@ def call_llm_repair(book: BookRecord, broken_output: str, error: str) -> tuple[s
 # ---------- Logging ----------
 
 def write_quarantine(book: BookRecord, raw_output: str, error: str) -> None:
-    """Two failures land here instead of crashing the request or leaking
-    raw model text to the caller. Append-only log - every failure is
-    evidence for later, never silently dropped."""
     QUARANTINE_PATH.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -201,9 +223,6 @@ def write_quarantine(book: BookRecord, raw_output: str, error: str) -> None:
 
 
 def log_call(usage: dict, repair_count: int, success: bool) -> None:
-    """Every call logs: prompt version, model, tokens in/out, duration ms,
-    repair count. You cannot manage what you do not measure - this is
-    what eventually answers 'how much would this cost at 10,000 req/day'."""
     CALL_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -217,3 +236,5 @@ def log_call(usage: dict, repair_count: int, success: bool) -> None:
     }
     with open(CALL_LOG_PATH, "a", encoding="utf-8") as f:
         f.write(json_module.dumps(entry) + "\n")
+
+

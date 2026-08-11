@@ -19,7 +19,7 @@ import requests
 
 CASES_PATH = "evals/cases.json"
 ENDPOINT = "http://localhost:8000/enrich"
-PROMPT_VERSION = "enrich-v1"  # keep in sync with src/llm/client.py
+PROMPT_VERSION = "enrich-v2"  # keep in sync with src/llm/client.py
 
 
 def load_cases() -> list[dict]:
